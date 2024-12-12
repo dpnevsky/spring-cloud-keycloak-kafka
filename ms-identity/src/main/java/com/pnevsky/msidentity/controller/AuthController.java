@@ -1,48 +1,49 @@
 package com.pnevsky.msidentity.controller;
 
 import com.pnevsky.msidentity.dto.AuthRequest;
+import com.pnevsky.msidentity.dto.RegistrationRequest;
 import com.pnevsky.msidentity.entity.UserCredential;
 import com.pnevsky.msidentity.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/auth")
 public class AuthController {
-
-    @Autowired
-    private AuthService authService;
-    @Autowired
-    private AuthenticationManager authenticationManager;
+    private final AuthService authService;
+    private final AuthenticationManager authenticationManager;
 
     @PostMapping("/register")
-    public String addNewUser(@RequestBody UserCredential user) { return authService.saveUser(user); }
+    @ResponseStatus(HttpStatus.CREATED)
+    public void register(@Valid @RequestBody RegistrationRequest request) {
+        var credential = new UserCredential();
+        credential.setUsername(request.getUsername());
+        credential.setEmail(request.getEmail());
+        credential.setPassword(request.getPassword());
+        authService.saveUser(credential);
+    }
 
     @PostMapping("/token")
-    public String getToken(@RequestBody AuthRequest authRequest) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword()));
-        if (authentication.isAuthenticated()) {
-            return authService.generateToken(authRequest.getUsername());
-        }
-        else {
-                throw new RuntimeException("invalid access from auth");
-        }
+    public TokenResponse getToken(@Valid @RequestBody AuthRequest request) {
+        authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
+                request.getUsername(), request.getPassword()));
+        return new TokenResponse("Bearer", authService.generateToken(request.getUsername()));
     }
 
-    @GetMapping("/{validate}")
-    public String valedateToken(@RequestParam("token") String token) {
-        authService.validateToken(token);
+    @GetMapping("/validate")
+    public String validateToken(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ") || authorization.length() <= 7) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bearer token is required");
+        }
+        authService.validateToken(authorization.substring(7));
         return "Token is valid";
     }
+
+    public record TokenResponse(String tokenType, String accessToken) {}
 }

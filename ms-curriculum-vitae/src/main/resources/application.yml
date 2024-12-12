@@ -1,61 +1,60 @@
-#server:
-#  port: 8084
-#
-#spring:
-#  application:
-#    name: CURRICULUM-VITAE-SERVICE
-
-
-#  security:
-#    oauth2:
-#      client:
-#        registration:
-#          keycloak:
-#            client-id: cvs-security
-#            client-secret: tyUTA8XH4LgjFiMoOwQ9c1pbwapL4jz9
-#            scope: openid
-#            authorization-grant-type: client_credentials
-#        provider:
-#          keycloak:
-#            jwk-set-uri: http://localhost:8080/realms/cvs/protocol/openid-connect/certs
-#            token-uri: http://localhost:8080/realms/cvs/protocol/openid-connect/token
-
+server:
+  port: 8084
+  address: ${SERVER_ADDRESS:127.0.0.1}
+spring:
+  application:
+    name: CURRICULUM-VITAE-SERVICE
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8889}
+  datasource:
+    url: jdbc:h2:mem:cvs;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    defer-datasource-initialization: true
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093,localhost:9094,localhost:9096}
+    consumer:
+      group-id: cv-country-events
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      missing-topics-fatal: false
+  cloud:
+    openfeign:
+      client:
+        config:
+          COUNTRY-SERVICE:
+            connectTimeout: 2000
+            readTimeout: 3000
+app:
+  kafka:
+    country-topic: ${COUNTRY_TOPIC:country-name-topic}
 eureka:
   client:
     service-url:
-      defaultZone : http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
 management:
   endpoints:
     web:
       exposure:
-        include: mapping,bus-refresh,bus-env,health,circuitbreakerevents,retry
-  endpoint:
-    health:
-      enabled: true
-      show-details: always
-  health:
-    circuitbreakers:
-      enabled: true
-
+        include: health,info
 resilience4j:
   circuitbreaker:
     instances:
       country-service:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
         failureRateThreshold: 50
-        automaticTransitionFromOpenToHalfOpenEnabled: true
         waitDurationInOpenState: 10s
-        slidingWindowType: COUNT_BASED
-        slidingWindowSize: 2
-        minimumNumberOfCalls: 1
-        eventConsumerBufferSize: 10
-        registerHealthIndicator: true
-        permittedNumberOfCallsInHalfOpenState: 3
-    circuit-breaker-aspect-order: 2
+        ignoreExceptions:
+          - org.springframework.web.server.ResponseStatusException
   retry:
-    retry-aspect-order: 10
     instances:
       country-service:
-        max-attempts: 3
-        wait-duration: 5000
-
-
+        maxAttempts: 2
+        waitDuration: 200ms
+        ignoreExceptions:
+          - org.springframework.web.server.ResponseStatusException

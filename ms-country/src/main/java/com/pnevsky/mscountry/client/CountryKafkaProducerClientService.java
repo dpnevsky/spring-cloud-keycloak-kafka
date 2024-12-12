@@ -1,21 +1,27 @@
 package com.pnevsky.mscountry.client;
 
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
-
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 @Component
-@RequiredArgsConstructor
 public class CountryKafkaProducerClientService {
-
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final String topic;
 
-    public void sendCountryName(String topic, String key, String message) throws ExecutionException, InterruptedException {
-        kafkaTemplate.send(topic, key, message);
+    public CountryKafkaProducerClientService(KafkaTemplate<String, String> kafkaTemplate,
+                                             @Value("${app.kafka.country-topic}") String topic) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.topic = topic;
     }
 
+    public CompletableFuture<SendResult<String, String>> sendCountryName(Long countryId, String countryName) {
+        try {
+            return kafkaTemplate.send(topic, countryId.toString(), countryName);
+        } catch (org.apache.kafka.common.KafkaException | org.springframework.kafka.KafkaException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
 }

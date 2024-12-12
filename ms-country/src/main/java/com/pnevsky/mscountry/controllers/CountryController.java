@@ -1,37 +1,49 @@
 package com.pnevsky.mscountry.controllers;
 
 import com.pnevsky.mscountry.client.CountryKafkaProducerClientService;
+import com.pnevsky.mscountry.model.Country;
 import com.pnevsky.mscountry.repository.CountryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.concurrent.CompletableFuture;
 
-import java.util.concurrent.ExecutionException;
-
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/countries")
 public class CountryController {
-
     private final CountryRepository countryRepository;
-    private final CountryKafkaProducerClientService countryClientService;
+    private final CountryKafkaProducerClientService producer;
 
-    @GetMapping("/country-id/{country_name}")
-    public Long getCountryId(@PathVariable(value = "country_name") String countryName) {
-        return countryRepository.findByCountryName(countryName).get().getId();
+    @GetMapping("/country-id/{countryName}")
+    public Long getCountryId(@PathVariable String countryName) {
+        return countryRepository.findByCountryName(countryName)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Country not found")).getId();
     }
 
-//    @GetMapping("/country-name/{country_id}")
-//    public String getCountryName(@PathVariable(value = "country_id") Long countryId) {
-//        return countryRepository.findCountryNameById(countryId).get().getCountryName();
-//    }
+    @GetMapping("/country-name/{countryId}")
+    public String getCountryName(@PathVariable Long countryId) {
+        return findCountry(countryId).getCountryName();
+    }
 
-    @GetMapping("/country-name/{country_id}")
-    public void sendCountryNameKafka(@PathVariable(value = "country_id") Long countryId) throws ExecutionException, InterruptedException {
-        String countryName = countryRepository.findCountryNameById(countryId).get().getCountryName();
-        String key = Long.toString(countryId);
-        countryClientService.sendCountryName("country-name-topic", "this country", countryName);
+    @PostMapping("/{countryId}/events")
+    public CompletableFuture<ResponseEntity<Void>> publishCountryName(@PathVariable Long countryId) {
+        Country country = findCountry(countryId);
+        return producer.sendCountryName(countryId, country.getCountryName()).handle((result, error) -> {
+            if (error != null) {
+                log.warn("Could not publish country event for id {}", countryId, error);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+            }
+            return ResponseEntity.accepted().build();
+        });
+    }
+
+    private Country findCountry(Long id) {
+        return countryRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Country not found"));
     }
 }

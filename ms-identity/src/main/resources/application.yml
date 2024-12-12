@@ -1,11 +1,19 @@
+server:
+  port: 8085
+  address: ${SERVER_ADDRESS:127.0.0.1}
 spring:
   application:
     name: IDENTITY-SERVICE
-
+  datasource:
+    url: jdbc:h2:mem:identity;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+app:
+  jwt:
+    secret: ${JWT_SECRET}
 eureka:
   client:
     service-url:
-      defaultZone : http://localhost:8761/eureka
-
-server:
-  port: 8085
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}

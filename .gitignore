@@ -1,0 +1,15 @@
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.gradle/
+**/build/
+**/target/
+**/out/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+__pycache__/

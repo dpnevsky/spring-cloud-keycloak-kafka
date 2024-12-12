@@ -1,17 +1,13 @@
 server:
   port: 8889
-
+  address: ${SERVER_ADDRESS:127.0.0.1}
 spring:
   application:
     name: config-server
-
+  profiles:
+    active: native
   cloud:
     config:
       server:
-        git:
-          uri: https://github.com/dpnevsky/cvsappconfiguration/cvs
-          username:
-          password:
-          default-label: main
-          search-paths: "{application}"
-
+        native:
+          search-locations: classpath:/config/

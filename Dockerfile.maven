@@ -1,0 +1,13 @@
+FROM maven:3.9.9-eclipse-temurin-17 AS build
+ARG MODULE
+WORKDIR /build
+COPY ${MODULE}/pom.xml pom.xml
+COPY ${MODULE}/src src
+RUN mvn -B -ntp -DskipTests package
+RUN cp target/*-SNAPSHOT.jar /app.jar
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+COPY --from=build /app.jar app.jar
+USER 10001:10001
+ENTRYPOINT ["java", "-jar", "app.jar"]

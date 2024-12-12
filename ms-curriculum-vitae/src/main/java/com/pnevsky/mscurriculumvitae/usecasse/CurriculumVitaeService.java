@@ -4,6 +4,5 @@ import com.pnevsky.mscurriculumvitae.model.CurriculumVitae;
 
 public interface CurriculumVitaeService {
     CurriculumVitae getCvById(Long id);
-
-    void save(CurriculumVitae curriculumVitae);
+    CurriculumVitae save(CurriculumVitae curriculumVitae);
 }

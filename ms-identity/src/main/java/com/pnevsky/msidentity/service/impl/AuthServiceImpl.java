@@ -4,33 +4,33 @@ import com.pnevsky.msidentity.entity.UserCredential;
 import com.pnevsky.msidentity.repository.UserCredentialRepository;
 import com.pnevsky.msidentity.service.AuthService;
 import com.pnevsky.msidentity.service.JwtService;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import java.nio.charset.StandardCharsets;
 
-@AllArgsConstructor
-@Component
+@Service
+@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
-
-    private UserCredentialRepository userCredentialRepository;
-    private PasswordEncoder passwordEncoder;
-    private JwtService jwtService;
+    private final UserCredentialRepository repository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
     @Override
     public String saveUser(UserCredential credential) {
+        if (credential.getPassword().getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password exceeds BCrypt byte limit");
+        }
         credential.setPassword(passwordEncoder.encode(credential.getPassword()));
-        userCredentialRepository.save(credential);
-        return "user added to the system";
+        repository.save(credential);
+        return "User registered";
     }
 
     @Override
-    public String generateToken(String username) {
-        return jwtService.generateToken(username);
-    }
+    public String generateToken(String username) { return jwtService.generateToken(username); }
 
     @Override
-    public void validateToken(String token) {
-        jwtService.validateToken(token);
-    }
+    public void validateToken(String token) { jwtService.validateToken(token); }
 }

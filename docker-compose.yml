@@ -1,0 +1,192 @@
+name: cvs-learning
+
+x-app-environment: &app-environment
+  SERVER_ADDRESS: 0.0.0.0
+  EUREKA_URL: http://eureka-server:8761/eureka/
+  EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+
+x-kafka-environment: &kafka-environment
+  CLUSTER_ID: pB9TEEuISCudfDuMUy76bQ
+  KAFKA_PROCESS_ROLES: controller,broker
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9091,2@kafka-2:9091,3@kafka-3:9091
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+x-kafka-health: &kafka-health
+  test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9090"]
+  interval: 10s
+  timeout: 10s
+  retries: 20
+  start_period: 30s
+
+services:
+  kafka-1:
+    image: apache/kafka:3.9.0
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://:9090,CONTROLLER://:9091,EXTERNAL://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9090,EXTERNAL://localhost:9093
+    ports: ["127.0.0.1:9093:9093"]
+    volumes: ["kafka-1-data:/var/lib/kafka/data"]
+    healthcheck: *kafka-health
+
+  kafka-2:
+    image: apache/kafka:3.9.0
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: PLAINTEXT://:9090,CONTROLLER://:9091,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9090,EXTERNAL://localhost:9094
+    ports: ["127.0.0.1:9094:9094"]
+    volumes: ["kafka-2-data:/var/lib/kafka/data"]
+    healthcheck: *kafka-health
+
+  kafka-3:
+    image: apache/kafka:3.9.0
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: PLAINTEXT://:9090,CONTROLLER://:9091,EXTERNAL://:9096
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9090,EXTERNAL://localhost:9096
+    ports: ["127.0.0.1:9096:9096"]
+    volumes: ["kafka-3-data:/var/lib/kafka/data"]
+    healthcheck: *kafka-health
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Create .env with scripts/init-env.py}
+      KC_HOSTNAME: http://localhost:8080
+      KC_HEALTH_ENABLED: "true"
+      CVS_READER_SECRET: ${CVS_READER_SECRET:?Create .env with scripts/init-env.py}
+      CVS_WRITER_SECRET: ${CVS_WRITER_SECRET:?Create .env with scripts/init-env.py}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - ./keycloak/cvs-realm.json:/opt/keycloak/data/import/cvs-realm.json:ro
+      - keycloak-data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "{ printf 'HEAD /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.gradle
+      args:
+        MODULE: eureka-server
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+    ports: ["127.0.0.1:8761:8761"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8761; printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3; read -r status <&3; [[ \"$$status\" == *200* ]]"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  config-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: CvsAppConfigServer
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+    ports: ["127.0.0.1:8889:8889"]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8889; printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3; read -r status <&3; [[ \"$$status\" == *200* ]]"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  ms-country:
+    build:
+      context: .
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: ms-country
+    environment:
+      <<: *app-environment
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:9090,kafka-2:9090,kafka-3:9090
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+
+  ms-curriculum-vitae:
+    build:
+      context: .
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: ms-curriculum-vitae
+    environment:
+      <<: *app-environment
+      CONFIG_SERVER_URL: http://config-server:8889
+      KAFKA_BOOTSTRAP_SERVERS: kafka-1:9090,kafka-2:9090,kafka-3:9090
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+
+  apigateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.maven
+      args:
+        MODULE: apigateway
+    environment:
+      <<: *app-environment
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/cvs
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/cvs/protocol/openid-connect/certs
+    ports: ["127.0.0.1:8888:8888"]
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      ms-country:
+        condition: service_started
+      ms-curriculum-vitae:
+        condition: service_started
+
+  ms-identity:
+    profiles: ["legacy-auth"]
+    build:
+      context: .
+      dockerfile: Dockerfile.gradle
+      args:
+        MODULE: ms-identity
+    environment:
+      <<: *app-environment
+      JWT_SECRET: ${JWT_SECRET:?Create .env with scripts/init-env.py}
+    ports: ["127.0.0.1:8085:8085"]
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+
+volumes:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+  keycloak-data:

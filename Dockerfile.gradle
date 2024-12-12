@@ -1,0 +1,14 @@
+FROM gradle:8.10.2-jdk17 AS build
+USER root
+ARG MODULE
+WORKDIR /build
+COPY ${MODULE}/build.gradle ${MODULE}/settings.gradle ./
+COPY ${MODULE}/src src
+RUN gradle --no-daemon bootJar
+RUN cp build/libs/*-SNAPSHOT.jar /app.jar
+
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+COPY --from=build /app.jar app.jar
+USER 10001:10001
+ENTRYPOINT ["java", "-jar", "app.jar"]

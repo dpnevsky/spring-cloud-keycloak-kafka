@@ -3,24 +3,29 @@ package com.pnevsky.mscurriculumvitae.usecasse.impl;
 import com.pnevsky.mscurriculumvitae.model.CurriculumVitae;
 import com.pnevsky.mscurriculumvitae.persistence.repository.CurriculumVitaeRepository;
 import com.pnevsky.mscurriculumvitae.usecasse.CurriculumVitaeService;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.UUID;
 
-@AllArgsConstructor
 @Service
+@RequiredArgsConstructor
 public class CurriculumVitaeServiceImpl implements CurriculumVitaeService {
-
-    private final CurriculumVitaeRepository curriculumVitaeRepository;
-
+    private final CurriculumVitaeRepository repository;
 
     @Override
+    @Transactional(readOnly = true)
     public CurriculumVitae getCvById(Long id) {
-
-        return curriculumVitaeRepository.findById(id).orElse(null);
+        return repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "CV not found"));
     }
 
     @Override
-    public void save(CurriculumVitae curriculumVitae) {
-        curriculumVitaeRepository.save(curriculumVitae);
+    @Transactional
+    public CurriculumVitae save(CurriculumVitae cv) {
+        cv.setUuid(UUID.randomUUID());
+        return repository.save(cv);
     }
 }
